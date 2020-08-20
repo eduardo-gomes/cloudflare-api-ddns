@@ -41,10 +41,10 @@ class Record:
 	Idv6 = ""
 	ZoneId = ""
 	ttl = 120
-	def __init__(self, name:str, types):
-		self.A = bool('A' in types)
-		self.AAAA = bool('AAAA' in types)
-		self.name = name
+	def __init__(self, record_conf:configparser.SectionProxy):
+		self.A = record_conf.getboolean('A', False)
+		self.AAAA = record_conf.getboolean('AAAA', False)
+		self.name = record_conf.name
 	def updateDNSRecord(self):
 		URL = APIURL + "zones/" + self.ZoneId + "/dns_records/"
 		if self.A:
@@ -93,6 +93,17 @@ def interactiveConfig(config_obj):
 	configAuth = config['AUTH']
 	if 'APIToken' not in configAuth:
 		configAuth['APIToken'] = input("Enter APIToken: ")
+	cont = True
+	while cont:
+		new_record = input('Record name: ')
+		ipv6 = input('Use ipv6 [y/n]: ') 
+		ipv4 = input('Use ipv4 [y/n]: ')
+		config[new_record] = {'A': (ipv4 == "y") | (ipv4 == "Y"),
+							'AAAA': (ipv6 == "y") | (ipv6 == "Y")
+							}
+		add_new_record = input('Add New Record [y/n]: ')
+		cont = (add_new_record == "y") | (add_new_record == "Y")
+	return config_obj
 	
 def checkConfigAuthIsSet(config_auth):
 	APIKeyAuthIsSet = ('APIKey' in config_auth) and ('APIEmail' in config_auth)
@@ -105,26 +116,38 @@ def checkConfig(config_obj):
 	sections = config_obj.sections()
 	if 'AUTH' not in sections:
 		print("AUTH section doesen't exist")
-		raise RuntimeError
-	else:
-		if not checkConfigAuthIsSet(config_obj['AUTH']):
-			print("No authentication is set")
-			raise RuntimeError
+		raise KeyError
+	elif not checkConfigAuthIsSet(config_obj['AUTH']):
+		print("No authentication is set")
+		raise KeyError
+	elif (len(sections) < 2):
+		print("No domain set")
+		raise KeyError
+
 
 
 config = configparser.ConfigParser()
 try:
 	with open('conf.ini') as file:
 		config.read_file(file)
+	checkConfig(config)
 except IOError:
 	print("Could't open conf.ini")
-	interactiveConfig(config)
+	config = interactiveConfig(config)
 	checkConfig(config)
+except KeyError:
+	print("invalid config")
+	config = interactiveConfig(config)
 
+auth = config['AUTH']
 with open('conf.ini', 'w') as configfile:
    config.write(configfile)
-auth = config['AUTH']
 authHeader = authObj(auth)
+
+## record config
+
+config_records = config.sections().copy()
+config_records.remove('AUTH')
 
 ## getZones
 
@@ -132,14 +155,17 @@ headers = authHeader.getAuthHeader()
 zonesListStr = requests.get('https://api.cloudflare.com/client/v4/zones', headers=headers)
 
 jsonzonesListStr = json.loads(zonesListStr.text)
-#print(json.dumps(jsonzonesListStr, sort_keys=True, indent=4))
+#%%
 recordsList = list()
-recordsList.append(Record("example.com", list(['A', 'AAAA'])))
+for record_name in config_records:
+	record_conf = config[record_name]
+	recordsList.append(Record(record_conf))
+
 zoneObjList = list()
 for zoneJSON in jsonzonesListStr.get('result'):
 	zone = Zone(zoneJSON)
 	zoneObjList.append(zone)
-	print(zone.Name, zone.Id, zone.CheckIfIsSubAddress(recordsList[0]))
+
 #%%
 for zone in zoneObjList:
 	for record in recordsList:
@@ -147,4 +173,3 @@ for zone in zoneObjList:
 			zone.GetIdToRecord(record)
 			record.updateDNSRecord()
 
-# %%
