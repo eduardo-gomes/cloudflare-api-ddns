@@ -31,8 +31,9 @@ class authObj:
 		self.APIToken = configAuth.get('APIToken', '')
 
 class address:
-	ipv4 = requests.get('https://api.ipify.org').text
-	ipv6 = requests.get('https://api6.ipify.org').text
+	ipv4 = ""
+	ipv6 = ""
+
 
 class Record:
 	A = False
@@ -125,8 +126,19 @@ def checkConfig(config_obj):
 		print("No domain set")
 		raise KeyError
 
-
-
+#%%
+print("Try to get ip")
+try:
+	print("Try to get ipv4")
+	address.ipv4 = requests.get('https://api.ipify.org', timeout=15).text
+except:
+	print("Can't get ipv4")
+try:
+	print("Try to get ipv6")
+	address.ipv6 = requests.get('https://api6.ipify.org', timeout=15).text
+except:
+	print("Can't get ipv6")
+#%%
 config = configparser.ConfigParser()
 try:
 	with open('conf.ini') as file:
