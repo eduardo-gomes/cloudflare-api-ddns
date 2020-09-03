@@ -2,6 +2,7 @@
 #%%
 import requests
 import json
+import sys
 
 import configparser
 
@@ -35,11 +36,12 @@ class Record:
 	Id = None
 	Idv6 = None
 	ZoneId = None
-	ttl = 120
+	ttl = None
 	def __init__(self, record_conf:configparser.SectionProxy):
 		self.A = record_conf.getboolean('A', False)
 		self.AAAA = record_conf.getboolean('AAAA', False)
 		self.name = record_conf.name
+		self.ttl = record_conf.getint('ttl', 120)
 	def updateDNSRecord(self):
 		URL = APIURL + "zones/" + self.ZoneId + "/dns_records/"
 		if self.A:
@@ -102,18 +104,18 @@ def interactiveConfig(config_obj):
 		new_record = input('Record name: ')
 		ipv6 = input('Use ipv6 [y/n]: ') 
 		ipv4 = input('Use ipv4 [y/n]: ')
+		ttl = int(input('Input TTL in seconds, 1 is automatic: '))
 		config[new_record] = {'A': (ipv4 == "y") | (ipv4 == "Y"),
-							'AAAA': (ipv6 == "y") | (ipv6 == "Y")
+							'AAAA': (ipv6 == "y") | (ipv6 == "Y"),
+							'ttl': ttl
 							}
 		add_new_record = input('Add New Record [y/n]: ')
 		cont = (add_new_record == "y") | (add_new_record == "Y")
 	return config_obj
 	
 def checkConfigAuthIsSet(config_auth):
-	APIKeyAuthIsSet = ('APIKey' in config_auth) and ('APIEmail' in config_auth)
 	APITokenAuthIsSet = ('APIToken' in config_auth)
-	authenticationIsSet = (APIKeyAuthIsSet << 1) + APITokenAuthIsSet
-	return authenticationIsSet
+	return APITokenAuthIsSet
 
 def checkConfig(config_obj):
 	print("Verify config")
@@ -130,21 +132,24 @@ def checkConfig(config_obj):
 
 #%%
 config = configparser.ConfigParser()
-try:
-	with open('conf.ini') as file:
-		config.read_file(file)
-	checkConfig(config)
-except IOError:
-	print("Could't open conf.ini")
+configPath = sys.path[0] + '/' + 'conf.ini'
+if '--config' in sys.argv:
 	config = interactiveConfig(config)
-	checkConfig(config)
-except KeyError:
-	print("invalid config")
-	config = interactiveConfig(config)
+	with open(configPath, 'w') as configfile:
+		config.write(configfile)
+else:
+	try:
+		with open(configPath) as file:
+			config.read_file(file)
+		checkConfig(config)
+	except IOError:
+		print("Could't open conf.ini")
+		raise RuntimeError('Run with --config to setup the config file')
+	except KeyError:
+		print("invalid config")
+		raise RuntimeError('Run with --config to setup the config file')
 
 auth = config['AUTH']
-with open('conf.ini', 'w') as configfile:
-   config.write(configfile)
 authHeader = authObj(auth)
 
 #%%
